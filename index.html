@@ -106,9 +106,39 @@ const updateTh = () => {
 };
 th.oninput = updateTh; updateTh();
 
-// 恢复之前录的声音
-(function loadVoice() {
-  const saved = store.get('voice');
+// 录音存在浏览器的 IndexedDB 里（比 localStorage 容量大、更不容易丢）
+const voiceDB = {
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('calm-down', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+  },
+  async get() {
+    const db = await this.open();
+    return new Promise(res => {
+      const q = db.transaction('kv').objectStore('kv').get('voice');
+      q.onsuccess = () => res(q.result || null); q.onerror = () => res(null);
+    });
+  },
+  async put(v) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('kv', 'readwrite');
+      t.objectStore('kv').put(v, 'voice');
+      t.oncomplete = res; t.onerror = () => rej(t.error);
+    });
+  },
+};
+// 请浏览器长期保留本站数据（手机 Safari 不常用的网站数据可能会被清掉）
+navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {});
+
+// 恢复之前录的声音（老版本存在 localStorage 里，也兼容）
+(async function loadVoice() {
+  let saved = null;
+  try { saved = await voiceDB.get(); } catch (e) {}
+  if (!saved) saved = store.get('voice');
   if (saved) { voiceUrl = saved; markVoiceReady(); }
   if (store.get('sound') === 'voice' && voiceUrl) $('voiceRadio').checked = true;
 })();
@@ -376,13 +406,18 @@ $('recBtn').onclick = async () => {
     const blob = new Blob(chunks, { type: rec.mimeType });
     if (blob.size < 1000) { $('recHint').textContent = '这次没录到声音，请再录一次'; return; }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       voiceUrl = reader.result;
-      store.set('voice', voiceUrl);
       markVoiceReady();
       $('voiceRadio').checked = true;
       store.set('sound', 'voice');
-      $('recHint').textContent = '录好了！已换成新录的声音，点“试听提醒”听一下。';
+      // 保存后读回来核对，确认真的存上了；存不上就明说，不再悄悄丢掉
+      let ok = false;
+      try { await voiceDB.put(voiceUrl); ok = (await voiceDB.get()) === voiceUrl; } catch (e) {}
+      store.set('voice', ok ? '' : voiceUrl);   // 已存进 IndexedDB 就清掉旧位置，省空间
+      $('recHint').textContent = ok
+        ? '录好了，已保存！以后打开都会用这段声音，点“试听提醒”听一下。'
+        : '⚠️ 录好了，但没能保存（可能在“无痕浏览”里）。这次能用，关掉网页后会丢失，请切到普通标签页再录。';
     };
     reader.readAsDataURL(blob);
   };
