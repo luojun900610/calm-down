@@ -229,9 +229,10 @@ function stopListening() {
 }
 
 // 只负责刷新屏幕上的数字
-function loop() {
+let lastDraw = 0;
+function loop(t) {
   if (!listening) return;
-  showLevel(lastDb);
+  if (!t || t - lastDraw > 100) { showLevel(lastDb); lastDraw = t || 0; }   // 每秒刷新 10 次就够，省电脑资源
   rafId = requestAnimationFrame(loop);
 }
 
@@ -288,13 +289,30 @@ function playReminder() {
   return useVoice ? playVoice() : playMusic();
 }
 
+// 录音只解码一次、存在内存里，之后用音频引擎直接播（以前每次都重新处理整段录音，很卡）
+let voiceBuf = null, voiceBufFor = null;
+async function getVoiceBuffer() {
+  if (voiceBufFor === voiceUrl && voiceBuf) return voiceBuf;
+  const bin = atob(voiceUrl.split(',')[1]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  voiceBuf = await getCtx().decodeAudioData(bytes.buffer);
+  voiceBufFor = voiceUrl;
+  return voiceBuf;
+}
+
 function playVoice() {
-  const a = new Audio(voiceUrl);
-  let finish;
+  let finish, src = null, stopped = false;
   const done = new Promise(res => { finish = res; });
-  a.onended = finish; a.onerror = finish;
-  a.play().catch(finish);
-  return { done, stop: () => { a.pause(); finish(); } };
+  getVoiceBuffer().then(buf => {
+    if (stopped) return;
+    src = getCtx().createBufferSource();
+    src.buffer = buf;
+    src.connect(getCtx().destination);
+    src.onended = finish;
+    src.start();
+  }).catch(finish);
+  return { done, stop: () => { stopped = true; try { src && src.stop(); } catch (e) {} finish(); } };
 }
 
 // 用代码合成的一小段轻柔旋律（音乐盒音色），约 4 秒
