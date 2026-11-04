@@ -43,7 +43,7 @@
   <h1>冷静一下 🌿</h1>
   <div class="sub">说话声音超过设定的分贝，马上播放提醒</div>
 
-  <button class="big arm" id="armBtn">👆 第一次使用：点这里激活麦克风和声音</button>
+  <button class="big arm" id="armBtn">👆 没能自动开始：点这里开始监听</button>
   <div class="mode" id="modeBox"></div>
 
   <div class="card" id="meterCard">
@@ -292,8 +292,9 @@ function showMode() {
 }
 
 function needArm() {
-  const ready = audioCtx && audioCtx.state === 'running' && (!remote || store.get('micOk')) && (!companion || listening);
-  $('armBtn').style.display = (remote || companion) && !ready ? 'block' : 'none';
+  // 只有“陪伴模式已开但没能自动开始”（麦克风或声音没被允许）时，才需要点一下
+  const ok = !companion || (listening && audioCtx && audioCtx.state === 'running');
+  $('armBtn').style.display = ok ? 'none' : 'block';
 }
 
 $('armBtn').onclick = async () => {
