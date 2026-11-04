@@ -333,10 +333,16 @@ if (remote) {
   showMode();
   needArm();
 } else {
-  // 别的标签页开了/关了陪伴模式 → 这一页停下，保证只有一页在听
-  if (tabs) tabs.onmessage = () => { if (companion) setCompanion(false); };
+  // 每次 Siri 口令都会新开一个标签页：新的一开，旧的就停下并自己关掉，保证只剩一页
+  // （浏览器只允许关掉“被打开时就是这个网址、没翻过别的页”的标签页，用户自己的页面不受影响）
+  const closeSelf = () => { if (history.length <= 1) window.close(); };
+  if (tabs) tabs.onmessage = () => { if (companion) setCompanion(false); closeSelf(); };
   if (urlMode) tabs && tabs.postMessage(urlMode);
   setCompanion(urlMode === 'on');
+  if (urlMode === 'off') {   // 退出：显示一下“已退出”，然后这页也关掉
+    $('status').textContent = '已退出陪伴模式，这一页马上自动关闭';
+    setTimeout(closeSelf, 2000);
+  }
 }
 
 // —— 录音 ——
