@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>冷静一下 · 分贝提醒</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #f4f6f8; color: #222; display: flex; justify-content: center; }
+  .wrap { width: 100%; max-width: 560px; padding: 24px 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #777; font-size: 14px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 14px; padding: 18px; margin-bottom: 14px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .db { font-size: 64px; font-weight: 700; text-align: center; line-height: 1; transition: color .2s; }
+  .db small { font-size: 20px; color: #999; font-weight: 400; }
+  .bar { position: relative; height: 18px; background: #eceff1; border-radius: 9px; overflow: hidden; margin: 16px 0 6px; }
+  .fill { height: 100%; width: 0; background: #4caf50; transition: width .08s, background .2s; }
+  .mark { position: absolute; top: -2px; bottom: -2px; width: 3px; background: #e53935; }
+  .status { text-align: center; font-size: 15px; color: #666; min-height: 22px; }
+  .loud .db { color: #e53935; }
+  button { font-size: 16px; padding: 12px 18px; border: none; border-radius: 10px; cursor: pointer;
+           background: #1976d2; color: #fff; }
+  button.secondary { background: #eceff1; color: #333; }
+  button.danger { background: #e53935; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .big { width: 100%; font-size: 18px; padding: 16px; }
+  label { display: block; font-weight: 600; margin-bottom: 8px; }
+  input[type=range] { width: 100%; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .opt { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-weight: 400; }
+  .hint { font-size: 13px; color: #888; margin-top: 8px; }
+  .mode { display: none; text-align: center; font-size: 16px; padding: 12px; border-radius: 10px; margin-bottom: 14px; }
+  .mode.standby { display: block; background: #eceff1; color: #555; }
+  .mode.on { display: block; background: #e8f5e9; color: #2e7d32; font-weight: 600; }
+  .arm { display: none; width: 100%; margin-bottom: 14px; background: #ff9800; }
+  .count { text-align: center; color: #888; font-size: 14px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>冷静一下 🌿</h1>
+  <div class="sub">说话声音超过设定的分贝，马上播放提醒</div>
+
+  <button class="big arm" id="armBtn">👆 第一次使用：点这里激活麦克风和声音</button>
+  <div class="mode" id="modeBox"></div>
+
+  <div class="card" id="meterCard">
+    <div class="db"><span id="dbVal">--</span> <small>分贝</small></div>
+    <div class="bar"><div class="fill" id="fill"></div><div class="mark" id="mark"></div></div>
+    <div class="status" id="status">还没开始监听</div>
+    <div class="count" id="count"></div>
+    <div style="margin-top:14px"><button class="big" id="startBtn">▶ 开始监听</button></div>
+  </div>
+
+  <div class="card">
+    <label>提醒的分贝线：<span id="thVal">75</span> 分贝</label>
+    <input type="range" id="threshold" min="40" max="100" value="75">
+    <div class="hint">先开始监听，正常说话看看数字是多少，再把线调得比它高一点。红色竖线就是这条线。</div>
+  </div>
+
+  <div class="card">
+    <label>提醒用什么声音</label>
+    <label class="opt"><input type="radio" name="sound" value="music" checked> 一段轻柔的音乐</label>
+    <label class="opt"><input type="radio" name="sound" value="voice" id="voiceRadio" disabled> 我自己录的话 <span id="voiceTag" style="color:#999">（还没录）</span></label>
+    <div class="row" style="margin-top:10px">
+      <button class="secondary" id="recBtn">🎙 录一段话</button>
+      <button class="secondary" id="testBtn">🔊 试听提醒</button>
+    </div>
+    <div class="hint" id="recHint">比如录一句：“深呼吸，慢慢说，孩子还小。” 最长 15 秒，再点一次结束录音。</div>
+  </div>
+
+  <div class="card hint" style="margin:0">
+    💡 电脑连上蓝牙音箱/AirPlay 音箱后，提醒会从音箱里放出来。<br>
+    💡 网页要一直开着（可以放在后台）。分贝数是估算值，不同电脑麦克风会有差别，以“调到合适”为准。
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+// 本地存设置；浏览器不让存时也不影响使用
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+};
+const DB_OFFSET = 100;        // 把麦克风的数字信号大致换算成"分贝"读数
+const LOUD_NEED_MS = 300;     // 累计大声这么久才提醒（说话有停顿也能累计；关门那种一下的声音不算）
+const COOLDOWN_MS = 5000;     // 提醒放完后歇几秒再重新监听
+const QUIET_MS = 15000;       // 提醒至少响 15 秒；一直吵就一直响，安静下来后再响 15 秒才停
+
+let audioCtx, proc, micSrc, micStream, rafId;
+let listening = false, playing = false;
+let loudScore = 0, lastDb = 30, cooldownUntil = 0, triggerCount = 0;
+let lastLoudAt = 0, current = null;   // 最近一次还在吵的时间；正在放的提醒
+let voiceUrl = null;          // 录好的声音
+let recorder = null;
+
+// —— 设置记忆 ——
+const th = $('threshold');
+th.value = store.get('threshold') || 75;
+const updateTh = () => {
+  $('thVal').textContent = th.value;
+  $('mark').style.left = ((th.value - 30) / 80 * 100) + '%';
+  store.set('threshold', th.value);
+};
+th.oninput = updateTh; updateTh();
+
+// 恢复之前录的声音
+(function loadVoice() {
+  const saved = store.get('voice');
+  if (saved) { voiceUrl = saved; markVoiceReady(); }
+  if (store.get('sound') === 'voice' && voiceUrl) $('voiceRadio').checked = true;
+})();
+document.querySelectorAll('input[name=sound]').forEach(r =>
+  r.onchange = () => store.set('sound', r.value));
+
+function markVoiceReady() {
+  $('voiceRadio').disabled = false;
+  $('voiceTag').textContent = '（已录好）';
+}
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// —— 监听 ——
+$('startBtn').onclick = () => listening ? stopListening() : startListening();
+
+async function startListening() {
+  if (listening) return;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true,   // 尽量不把提醒自己的声音当成吵闹
+              noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    $('status').textContent = '没拿到麦克风权限，请在浏览器地址栏允许使用麦克风';
+    return;
+  }
+  const ctx = getCtx();
+  // 在声音线程里算音量：网页切到后台也照样在听
+  micSrc = ctx.createMediaStreamSource(micStream);
+  proc = ctx.createScriptProcessor(2048, 1, 1);
+  const mute = ctx.createGain(); mute.gain.value = 0;   // 不把麦克风声音放出来
+  micSrc.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  proc.onaudioprocess = e => {
+    if (!listening) return;
+    const data = e.inputBuffer.getChannelData(0);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    const rms = Math.sqrt(sum / data.length);
+    lastDb = Math.max(30, Math.round(20 * Math.log10(rms || 1e-8) + DB_OFFSET));
+    checkTrigger(lastDb, data.length / ctx.sampleRate * 1000);
+  };
+  listening = true;
+  $('startBtn').textContent = '■ 停止监听';
+  $('startBtn').classList.add('danger');
+  $('status').textContent = '正在听…';
+  loop();
+}
+
+function stopListening() {
+  listening = false;
+  cancelAnimationFrame(rafId);
+  current && current.stop();
+  if (proc) { proc.onaudioprocess = null; proc.disconnect(); micSrc.disconnect(); }
+  loudScore = 0;
+  micStream && micStream.getTracks().forEach(t => t.stop());
+  $('startBtn').textContent = '▶ 开始监听';
+  $('startBtn').classList.remove('danger');
+  $('status').textContent = '已停止';
+  $('dbVal').textContent = '--';
+  $('fill').style.width = '0';
+  $('meterCard').classList.remove('loud');
+}
+
+// 只负责刷新屏幕上的数字
+function loop() {
+  if (!listening) return;
+  showLevel(lastDb);
+  rafId = requestAnimationFrame(loop);
+}
+
+function showLevel(db) {
+  $('dbVal').textContent = db;
+  const pct = Math.min(100, Math.max(0, (db - 30) / 80 * 100));
+  const loud = db >= +th.value;
+  $('fill').style.width = pct + '%';
+  $('fill').style.background = loud ? '#e53935' : (db >= th.value - 8 ? '#ffa000' : '#4caf50');
+  $('meterCard').classList.toggle('loud', loud);
+}
+
+// dt：这一小段声音有多少毫秒。大声就加分，安静就慢慢减分，分数够了就提醒
+function checkTrigger(db, dt) {
+  const now = performance.now();
+  if (recording) { loudScore = 0; $('status').textContent = '正在录音，暂停检测…'; return; }
+  if (now < cooldownUntil) { loudScore = 0; $('status').textContent = '休息一下，马上继续听…'; return; }
+  if (!playing) $('status').textContent = '正在听…';
+  if (db >= +th.value) loudScore += dt;
+  else loudScore = Math.max(0, loudScore - dt / 3);   // 词与词之间的小停顿不会清零
+  if (loudScore >= LOUD_NEED_MS) {
+    loudScore = 0;
+    lastLoudAt = now;                // 提醒期间还在吵 → 往后延
+    if (!playing) trigger();
+  }
+}
+
+async function trigger() {
+  triggerCount++;
+  $('count').textContent = `本次已提醒 ${triggerCount} 次`;
+  playing = true;
+  lastLoudAt = performance.now();
+  // 一直循环播放，直到"安静了 15 秒"
+  while (listening && !recording) {
+    current = playReminder();
+    const stillLoud = await new Promise(res => {
+      const timer = setInterval(() => {
+        const left = Math.ceil((QUIET_MS - (performance.now() - lastLoudAt)) / 1000);
+        $('status').textContent = `🌿 声音有点大了，深呼吸…（安静下来 ${Math.max(0, left)} 秒后停）`;
+        if (left <= 0 || !listening || recording) { clearInterval(timer); current.stop(); res(false); }
+      }, 200);
+      current.done.then(() => { clearInterval(timer); res(true); });
+    });
+    if (!stillLoud || recording || performance.now() - lastLoudAt >= QUIET_MS) break;
+  }
+  current = null;
+  playing = false;
+  cooldownUntil = performance.now() + COOLDOWN_MS;
+}
+
+// —— 提醒声音 ——（每个都返回 { done: 放完的信号, stop: 立刻停 }）
+function playReminder() {
+  const useVoice = document.querySelector('input[name=sound]:checked').value === 'voice' && voiceUrl;
+  return useVoice ? playVoice() : playMusic();
+}
+
+function playVoice() {
+  const a = new Audio(voiceUrl);
+  let finish;
+  const done = new Promise(res => { finish = res; });
+  a.onended = finish; a.onerror = finish;
+  a.play().catch(finish);
+  return { done, stop: () => { a.pause(); finish(); } };
+}
+
+// 用代码合成的一小段轻柔旋律（音乐盒音色），约 4 秒
+function playMusic() {
+  const ctx = getCtx();
+  const notes = [ [72,0],[76,.45],[79,.9],[84,1.35],[79,1.8],[76,2.25],[72,2.7] ];
+  const t0 = ctx.currentTime + 0.05;
+  const oscs = [];
+  notes.forEach(([midi, t]) => {
+    const freq = 440 * Math.pow(2, (midi - 69) / 12);
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t0 + t);
+    g.gain.linearRampToValueAtTime(0.35, t0 + t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + t + 1.2);
+    o.connect(g).connect(ctx.destination);
+    o.start(t0 + t); o.stop(t0 + t + 1.3);
+    oscs.push(o);
+  });
+  let finish, timer;
+  const done = new Promise(res => { finish = res; timer = setTimeout(res, 4100); });
+  return { done, stop: () => { oscs.forEach(o => { try { o.stop(); } catch (e) {} }); clearTimeout(timer); finish(); } };
+}
+
+$('testBtn').onclick = async () => {
+  if (playing) return;
+  playing = true;
+  $('testBtn').disabled = true;
+  try { await playReminder().done; } finally { playing = false; $('testBtn').disabled = false; }
+};
+
+// —— 陪伴模式 ——
+// 两种用法：
+// 1) 电脑上（localhost）：通过本机遥控服务（server.py）接收 Siri 指令
+// 2) 手机上（网上的地址）：Siri 打开 ?mode=on 自动开始，?mode=off 自动退出，不需要电脑
+const remote = ['localhost', '127.0.0.1'].includes(location.hostname);
+const urlMode = new URLSearchParams(location.search).get('mode');   // 'on' / 'off' / null
+const tabs = 'BroadcastChannel' in window ? new BroadcastChannel('companion') : null;
+let companion = false, wakeLock = null;
+
+function showMode() {
+  const box = $('modeBox');
+  box.className = 'mode ' + (companion ? 'on' : 'standby');
+  box.textContent = companion ? '💚 陪伴模式中（说“嘿 Siri，退出陪伴模式”结束）'
+                              : '😴 待机中，麦克风已关闭（说“嘿 Siri，陪伴模式”开始）';
+}
+
+function needArm() {
+  const ready = audioCtx && audioCtx.state === 'running' && (!remote || store.get('micOk')) && (!companion || listening);
+  $('armBtn').style.display = (remote || companion) && !ready ? 'block' : 'none';
+}
+
+$('armBtn').onclick = async () => {
+  getCtx();
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach(t => t.stop());
+    store.set('micOk', '1');
+  } catch (e) { $('status').textContent = '没拿到麦克风权限，请在浏览器地址栏允许使用麦克风'; }
+  if (companion && !listening) startListening();
+  setTimeout(needArm, 300);
+};
+
+// 屏幕保持常亮（手机锁屏后网页会停）
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen');
+    if (!on && wakeLock) { wakeLock.release(); wakeLock = null; }
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && companion) { wakeLock = null; keepAwake(true); }
+});
+
+async function setCompanion(on) {
+  companion = on;
+  showMode();
+  if (on) { await startListening(); keepAwake(true); }
+  else { if (listening) stopListening(); keepAwake(false); }
+  setTimeout(needArm, 500);   // 自动开始没成功（比如声音没被允许），就显示“点一下”按钮
+}
+
+if (remote) {
+  const es = new EventSource('/events');   // 服务一有新指令就推过来，网页在后台也能收到
+  es.onmessage = e => setCompanion(JSON.parse(e.data).on);
+  showMode();
+  needArm();
+} else {
+  // 别的标签页开了/关了陪伴模式 → 这一页停下，保证只有一页在听
+  if (tabs) tabs.onmessage = () => { if (companion) setCompanion(false); };
+  if (urlMode) tabs && tabs.postMessage(urlMode);
+  setCompanion(urlMode === 'on');
+}
+
+// —— 录音 ——
+let recBusy = false;          // 正在打开麦克风时，忽略重复点击
+let recording = false;        // 录音时暂停"吵闹检测"，免得提醒声被录进去
+$('recBtn').onclick = async () => {
+  if (recorder && recorder.state === 'recording') return recorder.stop();
+  if (recBusy) return;
+  recBusy = true;
+  recording = true;
+  current && current.stop();  // 正在放提醒就先停掉
+  $('recBtn').disabled = true;
+  $('recHint').textContent = '正在打开麦克风…如果浏览器弹出询问，请点“允许”';
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) {
+    $('recHint').textContent = '没拿到麦克风权限，没法录音';
+    recBusy = false; recording = false; $('recBtn').disabled = false;
+    return;
+  }
+  const chunks = [];
+  const rec = new MediaRecorder(stream);
+  recorder = rec;
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  const timer = setTimeout(() => rec.state === 'recording' && rec.stop(), 15000);
+  rec.onstop = () => {
+    clearTimeout(timer);
+    stream.getTracks().forEach(t => t.stop());
+    recording = false;
+    $('recBtn').textContent = '🎙 重新录一段';
+    const blob = new Blob(chunks, { type: rec.mimeType });
+    if (blob.size < 1000) { $('recHint').textContent = '这次没录到声音，请再录一次'; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      voiceUrl = reader.result;
+      store.set('voice', voiceUrl);
+      markVoiceReady();
+      $('voiceRadio').checked = true;
+      store.set('sound', 'voice');
+      $('recHint').textContent = '录好了！已换成新录的声音，点“试听提醒”听一下。';
+    };
+    reader.readAsDataURL(blob);
+  };
+  rec.start();
+  recBusy = false;
+  $('recBtn').disabled = false;
+  $('recBtn').textContent = '⏹ 录音中…点我结束';
+  $('recHint').textContent = '正在录音，说完点按钮结束（最长 15 秒）';
+};
+</script>
+</body>
+</html>
