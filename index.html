@@ -68,7 +68,7 @@
       <button class="secondary" id="recBtn">🎙 录一段话</button>
       <button class="secondary" id="testBtn">🔊 试听提醒</button>
     </div>
-    <div class="hint" id="recHint">比如录一句：“深呼吸，慢慢说，孩子还小。” 最长 15 秒，再点一次结束录音。</div>
+    <div class="hint" id="recHint">比如录一句：“深呼吸，慢慢说，孩子还小。” 最长 15 秒，再点一次结束录音。<br>📱 手机上请对 Siri 说“录制提醒语”来录，这样永远不会丢。</div>
   </div>
 
   <div class="card hint" style="margin:0">
@@ -146,7 +146,17 @@ async function showDiag() {
 showDiag();
 
 // 恢复之前录的声音（老版本存在 localStorage 里，也兼容）
+// 优先用快捷指令“带过来”的录音（网址 #v=录音内容）：不靠浏览器保存，无痕浏览也不会丢
 (async function loadVoice() {
+  const fromShortcut = decodeURIComponent((location.hash.match(/[#&]v=([^&]*)/) || [])[1] || '').replace(/\s/g, '');
+  if (fromShortcut.length > 1000) {
+    voiceUrl = 'data:audio/mp4;base64,' + fromShortcut;
+    markVoiceReady();
+    $('voiceRadio').checked = true;
+    $('voiceTag').textContent = '（用快捷指令“录制提醒语”录的）';
+    history.replaceState(null, '', location.pathname + location.search);   // 地址栏别留一长串
+    return;
+  }
   let saved = null;
   try { saved = await voiceDB.get(); } catch (e) {}
   if (!saved) saved = store.get('voice');
