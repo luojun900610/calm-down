@@ -75,6 +75,7 @@
     💡 电脑连上蓝牙音箱/AirPlay 音箱后，提醒会从音箱里放出来。<br>
     💡 网页要一直开着（可以放在后台）。分贝数是估算值，不同电脑麦克风会有差别，以“调到合适”为准。
   </div>
+  <div id="diag" style="text-align:center;color:#bbb;font-size:12px;margin-top:10px"></div>
 </div>
 
 <script>
@@ -133,6 +134,16 @@ const voiceDB = {
 };
 // 请浏览器长期保留本站数据（手机 Safari 不常用的网站数据可能会被清掉）
 navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {});
+
+// 诊断小字：本站第几次打开、录音存着没有、浏览器是否答应长期保留（排查手机丢录音用）
+async function showDiag() {
+  const n = (+store.get('opens') || 0) + 1; store.set('opens', n);
+  let v = null; try { v = await voiceDB.get(); } catch (e) {}
+  const kb = v ? Math.round(v.length / 1024) + 'KB' : (store.get('voice') ? '旧位置有' : '无');
+  let keep = '?'; try { keep = (await navigator.storage.persisted()) ? '是' : '否'; } catch (e) {}
+  $('diag').textContent = `诊断：本站第 ${n} 次打开 · 录音 ${kb} · 长期保留 ${keep}`;
+}
+showDiag();
 
 // 恢复之前录的声音（老版本存在 localStorage 里，也兼容）
 (async function loadVoice() {
