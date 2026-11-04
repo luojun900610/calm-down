@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>冷静一下 · 安装</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -27,7 +29,11 @@
 <div class="wrap">
   <h1>冷静一下 🌿</h1>
   <div class="sub">管孩子时声音一大，就自动播放音乐或你自己录的一句话，提醒你先缓一缓。<br>
-    免费、不用注册，iPhone 和 Mac 都能用（请用 <b>Safari</b> 打开本页）。</div>
+    免费、不用注册，iPhone、Mac、安卓都能用。</div>
+  <div class="sub" id="switch"></div>
+
+  <div id="ios">
+  <div class="tip" style="margin-bottom:10px">🍎 iPhone / Mac：请用 <b>Safari</b> 打开本页</div>
 
   <div class="card">
     <h2>① 下载 3 个快捷指令</h2>
@@ -57,7 +63,49 @@
     💡 平时麦克风是关的，只在陪伴模式时才听；声音不会上传到任何地方。
   </div>
 
-  <a class="btn gray" href="./">不装快捷指令，直接在网页里用 →</a>
+  </div>
+
+  <div id="android" style="display:none">
+  <div class="card">
+    <h2>🤖 安卓手机：添加到桌面</h2>
+    <ol>
+      <li>用 <b>Chrome</b>（或手机自带浏览器）打开本页</li>
+      <li>点下面绿色按钮打开“冷静一下”</li>
+      <li>点浏览器右上角 <b>⋮ 菜单 → “添加到主屏幕 / 安装应用”</b></li>
+      <li>以后陪孩子前，<b>点桌面上的“冷静一下”图标</b>就自动开始听</li>
+    </ol>
+    <a class="btn green" href="./?mode=on">🌿 打开冷静一下</a>
+  </div>
+  <div class="card">
+    <h2>② 怎么用</h2>
+    <ol>
+      <li>第一次打开会问能不能用麦克风，点“允许”</li>
+      <li>点“录一段话”录你自己的提醒（不录就用音乐），会自动保存</li>
+      <li>正常说几句话看看分贝数，把“提醒的分贝线”调得比它高一点</li>
+      <li>用完点“停止监听”，或直接关掉</li>
+      <li>如果打开后显示橙色按钮，点一下就开始（有的浏览器要求先点一下才能出声）</li>
+    </ol>
+    <div class="tip" style="margin-top:8px">🗣 手机语音助手支持“打开某个应用”的话（比如小爱、小艺），添加到桌面后可以试试说“打开冷静一下”。</div>
+  </div>
+  <div class="card tip">
+    💡 声音持续超过分贝线才会提醒（关门那种“砰”一下不算）；至少响 15 秒，安静下来 15 秒后才停。<br>
+    💡 用的时候页面要开着、屏幕亮着。<br>
+    💡 平时麦克风是关的，声音不会上传到任何地方。
+  </div>
+  </div>
+
+  <a class="btn gray" href="./">不装，直接在网页里用 →</a>
 </div>
+<script>
+  // 按手机类型显示对应步骤；认错了可以手动切换
+  function show(android) {
+    document.getElementById('ios').style.display = android ? 'none' : 'block';
+    document.getElementById('android').style.display = android ? 'block' : 'none';
+    document.getElementById('switch').innerHTML = android
+      ? '当前显示：安卓步骤 · <a href="#" onclick="show(false);return false">我用的是苹果 →</a>'
+      : '当前显示：苹果步骤 · <a href="#" onclick="show(true);return false">我用的是安卓 →</a>';
+  }
+  show(/Android/i.test(navigator.userAgent));
+</script>
 </body>
 </html>

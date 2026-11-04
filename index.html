@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>冷静一下 · 分贝提醒</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#2e7d32">
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -68,7 +71,7 @@
       <button class="secondary" id="recBtn">🎙 录一段话</button>
       <button class="secondary" id="testBtn">🔊 试听提醒</button>
     </div>
-    <div class="hint" id="recHint">比如录一句：“深呼吸，慢慢说，孩子还小。” 最长 15 秒，再点一次结束录音。<br>📱 手机上请对 Siri 说“录制提醒语”来录，这样永远不会丢。</div>
+    <div class="hint" id="recHint">比如录一句：“深呼吸，慢慢说，孩子还小。” 最长 15 秒，再点一次结束录音。<br><span id="platformTip">📱 iPhone 上请对 Siri 说“录制提醒语”来录，这样永远不会丢。</span></div>
   </div>
 
   <div class="card hint" style="margin:0">
@@ -343,6 +346,11 @@ $('testBtn').onclick = async () => {
   $('testBtn').disabled = true;
   try { await playReminder().done; } finally { playing = false; $('testBtn').disabled = false; }
 };
+
+// 安卓手机没有“快捷指令”：录音直接在网页里录（安卓浏览器能存住），提示文字跟着换
+if (/Android/i.test(navigator.userAgent)) {
+  $('platformTip').textContent = '📱 安卓手机直接点上面“录一段话”就行，录好会自动保存。';
+}
 
 // —— 陪伴模式 ——
 // 两种用法：
